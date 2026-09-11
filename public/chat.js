@@ -381,7 +381,7 @@ let typingTimeout = null;
 let isTyping = false;
 
 async function postMessage(content, msgType = 'text', filename = '') {
-  const res = await fetch('/messages', {
+  const res = await chatFetch('/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-token': token, 'x-username': username },
     body: JSON.stringify({ content, msg_type: msgType, filename })
@@ -392,7 +392,7 @@ async function postMessage(content, msgType = 'text', filename = '') {
 
 async function refreshMessages() {
   try {
-    const res = await fetch('/messages', { headers: { 'x-token': token, 'x-username': username } });
+    const res = await chatFetch('/messages', { headers: { 'x-token': token, 'x-username': username } });
     if (res.status === 401) { clearSavedSession(); window.location.replace('index.html'); return; }
     if (!res.ok) return;
     const messages = await res.json();
@@ -520,7 +520,7 @@ async function uploadAndSendFile() {
 
   let uploadData;
   try {
-    const res = await fetch('/upload', {
+    const res = await chatFetch('/upload', {
       method: 'POST',
       headers: { 'x-token': token, 'x-username': username },
       body: formData
@@ -613,7 +613,7 @@ async function initPush() {
 
 async function subscribeToPush(reg) {
   try {
-    const cfg = await fetch('/push-config').then(r => r.json());
+    const cfg = await chatFetch('/push-config').then(r => r.json());
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       sub = await reg.pushManager.subscribe({
@@ -621,7 +621,7 @@ async function subscribeToPush(reg) {
         applicationServerKey: urlBase64ToUint8Array(cfg.publicKey)
       });
     }
-    await fetch('/subscribe', {
+    await chatFetch('/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-token': token, 'x-username': username },
       body: JSON.stringify({ subscription: sub })
@@ -732,7 +732,7 @@ document.getElementById('changePwdForm').addEventListener('submit', async (e) =>
   btn.disabled = true; label.textContent = 'Updating…'; spinner.style.display = '';
 
   try {
-    const res  = await fetch('/change-password', {
+    const res  = await chatFetch('/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, oldPassword: oldPwd, newPassword: newPwd })
@@ -1019,9 +1019,12 @@ function showCallToast(msg) {
   // Text messages use the HTTP API so they also work on Vercel Functions.
   // Keep Socket.IO for local real-time calls; Vercel does not provide durable
   // WebSocket connections for this server.
+  const cloudChatApi = await getChatApiBase();
+  // Render's lightweight Socket.IO connection is only for live presence,
+  // typing, and voice-call signalling. Messages still use Cloudflare D1.
   if (!location.hostname.endsWith('.vercel.app')) socket.connect();
   setInterval(refreshMessages, 3_000);
-  await initPush();
+  if (!cloudChatApi) await initPush();
   // Socket connection is already initiated above; 'connect' event sends auth,
   // server responds with 'history', which reveals the chat UI.
 })();

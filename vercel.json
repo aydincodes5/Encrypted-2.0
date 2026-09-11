@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/login", "destination": "/api" },
+    { "source": "/change-password", "destination": "/api" },
+    { "source": "/push-config", "destination": "/api" },
+    { "source": "/subscribe", "destination": "/api" },
+    { "source": "/messages", "destination": "/api" },
+    { "source": "/upload", "destination": "/api" }
+  ]
+}

@@ -13,7 +13,9 @@ function clearSavedSession() {
   sessionStorage.removeItem('ec_session');
 }
 
-const session = JSON.parse(getSavedSession() || 'null');
+let session = null;
+try { session = JSON.parse(getSavedSession() || 'null'); }
+catch { clearSavedSession(); }
 if (!session) { window.location.replace('index.html'); }
 
 const { username, displayName, initial, token } = session;
@@ -35,6 +37,31 @@ const friendFirstName   = friendDisplayName.split(' ')[0];
 // ══════════════════════════════════════════════════════════════════════════════
 const ENC_SECRET = 'EC-AES256-MUHAMMED-AYAAN-2024-V2-XKQP91';
 let AES_KEY = null;
+const MESSAGE_CACHE_KEY = `ec_messages_v1_${username}`;
+const renderedMessageIds = new Set();
+
+function readCachedMessages() {
+  try {
+    const oldest = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const messages = JSON.parse(localStorage.getItem(MESSAGE_CACHE_KEY) || '[]')
+      .filter(msg => msg && msg.id && new Date(msg.timestamp).getTime() >= oldest)
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    localStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(messages));
+    return messages;
+  } catch {
+    return [];
+  }
+}
+
+function cacheMessage(msg) {
+  try {
+    const messages = readCachedMessages();
+    const index = messages.findIndex(item => item.id === msg.id);
+    if (index >= 0) messages[index] = msg;
+    else messages.push(msg);
+    localStorage.setItem(MESSAGE_CACHE_KEY, JSON.stringify(messages.slice(-1000)));
+  } catch { /* Storage may be disabled or full. Live chat still works. */ }
+}
 
 async function initEncryption() {
   const enc = new TextEncoder();
@@ -106,12 +133,7 @@ socket.on('history', async (messages) => {
   if (messages.length > 0) removeEmptyState();
   scrollToBottom(false);
 
-  // Reveal chat
-  loadingScreen.classList.add('hidden');
-  setTimeout(() => {
-    loadingScreen.style.display = 'none';
-    chatLayout.style.display = '';
-  }, 400);
+  revealChat();
 });
 
 // ── New message ──
@@ -121,6 +143,19 @@ socket.on('msg', async (msg) => {
   scrollToBottom(true);
   if (msg.from !== username) pingSound();
 });
+
+socket.on('connect_error', () => {
+  if (renderedMessageIds.size) revealChat();
+});
+
+function revealChat() {
+  if (chatLayout.style.display !== 'none') return;
+  loadingScreen.classList.add('hidden');
+  setTimeout(() => {
+    loadingScreen.style.display = 'none';
+    chatLayout.style.display = '';
+  }, 400);
+}
 
 // ── Typing ──
 let typingHideTimer = null;
@@ -149,6 +184,9 @@ socket.on('presence', (online) => {
 let lastDateStr = '';
 
 async function renderMessage(msg, animate) {
+  if (!msg || !msg.id || renderedMessageIds.has(msg.id)) return;
+  renderedMessageIds.add(msg.id);
+  cacheMessage(msg);
   const isMine = (msg.from === username);
   const d      = new Date(msg.timestamp);
 
@@ -174,7 +212,7 @@ async function renderMessage(msg, animate) {
   let bubble;
   const msgType = msg.msg_type || 'text';
 
-  if (msgType === 'image') {
+  if (msgType === 'image' || msgType === 'gif') {
     bubble = buildImageBubble(plaintext, isMine);
   } else if (msgType === 'file') {
     bubble = buildFileBubble(plaintext, isMine);
@@ -184,6 +222,8 @@ async function renderMessage(msg, animate) {
     try { parsed = JSON.parse(plaintext); } catch { /* not JSON */ }
 
     if (parsed && parsed.type === 'image' && parsed.url) {
+      bubble = buildImageBubble(JSON.stringify(parsed), isMine);
+    } else if (parsed && parsed.type === 'gif' && parsed.url) {
       bubble = buildImageBubble(JSON.stringify(parsed), isMine);
     } else if (parsed && parsed.type === 'file' && parsed.url) {
       bubble = buildFileBubble(JSON.stringify(parsed), isMine);
@@ -315,11 +355,52 @@ function pingSound() {
   } catch { /* browser may block audio */ }
 }
 
+let ringtoneTimer = null;
+function startRingtone() {
+  stopRingtone();
+  const ring = () => {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      [523, 659].forEach((frequency, i) => {
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.value = frequency; gain.gain.setValueAtTime(0.0001, now + i * .24);
+        gain.gain.exponentialRampToValueAtTime(.13, now + i * .24 + .025); gain.gain.exponentialRampToValueAtTime(.0001, now + i * .24 + .20);
+        osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now + i * .24); osc.stop(now + i * .24 + .22);
+      });
+    } catch { /* Audio needs a prior browser interaction on some devices. */ }
+  };
+  ring(); ringtoneTimer = setInterval(ring, 1700);
+}
+function stopRingtone() { if (ringtoneTimer) clearInterval(ringtoneTimer); ringtoneTimer = null; }
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SEND MESSAGE
 // ══════════════════════════════════════════════════════════════════════════════
 let typingTimeout = null;
 let isTyping = false;
+
+async function postMessage(content, msgType = 'text', filename = '') {
+  const res = await fetch('/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-token': token, 'x-username': username },
+    body: JSON.stringify({ content, msg_type: msgType, filename })
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function refreshMessages() {
+  try {
+    const res = await fetch('/messages', { headers: { 'x-token': token, 'x-username': username } });
+    if (res.status === 401) { clearSavedSession(); window.location.replace('index.html'); return; }
+    if (!res.ok) return;
+    const messages = await res.json();
+    for (const msg of messages) await renderMessage(msg, false);
+    if (messages.length) { removeEmptyState(); scrollToBottom(false); }
+    revealChat();
+  } catch { /* A later poll will retry after a temporary network failure. */ }
+}
 
 async function sendMessage() {
   const text    = msgInput.value.trim();
@@ -343,12 +424,29 @@ async function sendMessage() {
   // Send text
   if (hasText) {
     try {
-      socket.emit('msg', { content: await encrypt(text) });
+      const msg = await postMessage(await encrypt(text));
+      await renderMessage(msg, true);
+      removeEmptyState();
+      scrollToBottom(true);
     } catch (e) { console.error('Encrypt error:', e); }
   }
 }
 
 sendBtn.addEventListener('click', sendMessage);
+
+const emojiPicker = document.getElementById('emojiPicker');
+document.getElementById('emojiBtn').addEventListener('click', () => { emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'flex' : 'none'; });
+emojiPicker.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { msgInput.value += button.textContent; msgInput.focus(); emojiPicker.style.display = 'none'; msgInput.dispatchEvent(new Event('input')); }));
+const gifModal = document.getElementById('gifModal');
+document.getElementById('gifBtn').addEventListener('click', () => { gifModal.style.display = 'flex'; document.getElementById('gifUrl').focus(); });
+document.getElementById('closeGifModal').addEventListener('click', () => gifModal.style.display = 'none');
+document.getElementById('sendGifBtn').addEventListener('click', async () => {
+  const input = document.getElementById('gifUrl'), error = document.getElementById('gifError');
+  const url = input.value.trim();
+  if (!/^https:\/\/.+\.(gif)(\?.*)?$/i.test(url)) { error.textContent = 'Please paste a direct https GIF link ending in .gif.'; error.style.display = 'block'; return; }
+  try { const msg = await postMessage(await encrypt(JSON.stringify({ url, name: 'GIF', type: 'gif' })), 'gif'); await renderMessage(msg, true); removeEmptyState(); scrollToBottom(true); input.value = ''; error.style.display = 'none'; gifModal.style.display = 'none'; }
+  catch { error.textContent = 'Could not send the GIF. Please try again.'; error.style.display = 'block'; }
+});
 
 msgInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -410,12 +508,13 @@ removeFileBtn.addEventListener('click', () => {
 /** Upload the pending file to server, then emit a file-msg event */
 async function uploadAndSendFile() {
   if (!pendingFile) return;
-  const file = pendingFile;
+  let file = pendingFile;
   pendingFile = null;
   filePreviewStrip.style.display = 'none';
   filePreviewImg.src = '';
   filePreviewImg.style.display = 'none';
 
+  if (file.type.startsWith('image/') && file.type !== 'image/gif') file = await compressImage(file);
   const formData = new FormData();
   formData.append('file', file);
 
@@ -439,12 +538,25 @@ async function uploadAndSendFile() {
 
   try {
     const encrypted = await encrypt(payload);
-    socket.emit('file-msg', {
-      content:  encrypted,
-      filename: file.name,
-      msg_type: isImage ? 'image' : 'file'
-    });
+    const msg = await postMessage(encrypted, isImage ? 'image' : 'file', file.name);
+    await renderMessage(msg, true);
+    removeEmptyState();
+    scrollToBottom(true);
   } catch (e) { console.error('Encrypt file error:', e); }
+}
+
+// Fast client-side compression removes camera metadata and makes large photos
+// much quicker to upload. GIFs stay untouched so their animation is preserved.
+async function compressImage(file) {
+  if (file.size < 350 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file), max = 1920;
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas'); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .80));
+    return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' }) : file;
+  } catch { return file; }
 }
 
 // Drag-and-drop support on the messages area
@@ -526,10 +638,23 @@ function urlBase64ToUint8Array(b64) {
 // ══════════════════════════════════════════════════════════════════════════════
 // CHANGE PASSWORD MODAL
 // ══════════════════════════════════════════════════════════════════════════════
-document.getElementById('settingsBtn').addEventListener('click', () => {
-  document.getElementById('changePwdModal').style.display = 'flex';
-  document.getElementById('changeUsername').focus();
+const settingsModal = document.getElementById('settingsModal');
+const settingsRemember = document.getElementById('settingsRemember');
+function isRemembered() { return !!localStorage.getItem('ec_session'); }
+function applyWallpaper(name) { document.body.dataset.wallpaper = name; localStorage.setItem('ec_wallpaper', name); document.querySelectorAll('.wallpaper-choice').forEach(b => b.classList.toggle('active', b.dataset.wallpaper === name)); }
+applyWallpaper(localStorage.getItem('ec_wallpaper') || 'aurora');
+settingsRemember.checked = isRemembered();
+document.getElementById('settingsBtn').addEventListener('click', () => { settingsRemember.checked = isRemembered(); settingsModal.style.display = 'flex'; });
+document.getElementById('closeSettingsModal').addEventListener('click', () => settingsModal.style.display = 'none');
+settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.style.display = 'none'; });
+document.querySelectorAll('.wallpaper-choice').forEach(btn => btn.addEventListener('click', () => applyWallpaper(btn.dataset.wallpaper)));
+settingsRemember.addEventListener('change', () => {
+  const raw = getSavedSession(); if (!raw) return;
+  if (settingsRemember.checked) { localStorage.setItem('ec_session', raw); sessionStorage.removeItem('ec_session'); }
+  else { sessionStorage.setItem('ec_session', raw); localStorage.removeItem('ec_session'); }
 });
+document.getElementById('openPasswordSettings').addEventListener('click', () => { settingsModal.style.display = 'none'; document.getElementById('changePwdModal').style.display = 'flex'; document.getElementById('changeUsername').focus(); });
+document.getElementById('settingsLogout').addEventListener('click', () => { clearSavedSession(); window.location.replace('index.html'); });
 
 document.getElementById('closePwdModal').addEventListener('click', closePwdModal);
 document.getElementById('changePwdModal').addEventListener('click', (e) => {
@@ -750,12 +875,13 @@ socket.on('call-offer', async ({ offer }) => {
   callState = 'incoming';
   queuedIceCandidates = [];
   document.getElementById('incomingCall').style.display = 'flex';
-  pingSound(); // alert sound
+  startRingtone();
 
   // ── Accept ──
   document.getElementById('acceptCall').onclick = async () => {
     if (callState !== 'incoming') return;
     document.getElementById('incomingCall').style.display = 'none';
+    stopRingtone();
     if (!await getMic()) { callState = 'idle'; return; }
 
     pc = buildPC();
@@ -776,6 +902,7 @@ socket.on('call-offer', async ({ offer }) => {
   document.getElementById('rejectCall').onclick = () => {
     if (callState !== 'incoming') return;
     document.getElementById('incomingCall').style.display = 'none';
+    stopRingtone();
     socket.emit('call-end');
     cleanupMedia();
     callState = 'idle';
@@ -804,6 +931,7 @@ socket.on('ice-candidate', async ({ candidate }) => {
 
 // ── Remote ended call ─────────────────────────────────────────────────────────
 socket.on('call-end', () => {
+  stopRingtone();
   clearTimeout(ringingTimer);
   if      (callState === 'ringing')  { dismissRinging('Call Declined'); }
   else if (callState === 'incoming') { document.getElementById('incomingCall').style.display = 'none'; cleanupMedia(); callState = 'idle'; }
@@ -880,7 +1008,19 @@ function showCallToast(msg) {
 // ══════════════════════════════════════════════════════════════════════════════
 (async () => {
   await initEncryption();
-  socket.connect();
+  const cachedMessages = readCachedMessages();
+  for (const msg of cachedMessages) await renderMessage(msg, false);
+  if (cachedMessages.length) {
+    removeEmptyState();
+    scrollToBottom(false);
+    revealChat();
+  }
+  await refreshMessages();
+  // Text messages use the HTTP API so they also work on Vercel Functions.
+  // Keep Socket.IO for local real-time calls; Vercel does not provide durable
+  // WebSocket connections for this server.
+  if (!location.hostname.endsWith('.vercel.app')) socket.connect();
+  setInterval(refreshMessages, 3_000);
   await initPush();
   // Socket connection is already initiated above; 'connect' event sends auth,
   // server responds with 'history', which reveals the chat UI.

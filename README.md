@@ -1,8 +1,14 @@
-# 🔐 EncryptedChat — Setup Guide
+# 🔐 EncryptedChat — Render-only setup
 
 > A private, encrypted chat + voice call app. Just for you and Ayaan.
 
 ---
+
+## What this version needs
+
+It does **not** use Supabase. It saves its small encrypted database and uploads on a Render Persistent Disk. Messages and their uploads are automatically removed after 7 days.
+
+> Important: a Render free web service has temporary storage. For messages to survive a restart or deploy, attach a Render Persistent Disk. A disk is a Render feature, not a separate account.
 
 ## Step 1 — Install Node.js (only once, ever)
 
@@ -34,29 +40,15 @@
 
 ---
 
-## Step 3 — Make it work from Ayaan's laptop too (free hosting)
+## Step 3 — Put it on Render
 
-For Ayaan to use it from his house, you need to put it on the internet for free.
+1. Create a **Web Service** in Render and connect this repository.
+2. Use build command `npm install` and start command `npm start`.
+3. Add a **Persistent Disk** mounted at `/var/data`.
+4. In Render's Environment page, add `MUHAMMED_PASSWORD`, `AYAAN_PASSWORD`, and `SESSION_SECRET` (a long random value). Also add `DATA_DIR=/var/data` and `UPLOADS_DIR=/var/data/uploads`.
+5. Deploy. The chat works at the Render URL.
 
-### 3a — Upload to GitHub
-1. Go to **https://github.com** → create a free account
-2. Click **New Repository** → name it `encrypted-chat` → click **Create**
-3. Upload all files from this folder to GitHub
-   *(drag and drop them onto the GitHub page)*
-
-### 3b — Deploy on Render (free hosting)
-1. Go to **https://render.com** → create a free account
-2. Click **New** → **Web Service**
-3. Connect your GitHub account → choose `encrypted-chat`
-4. Render will auto-detect Node.js. Just click **Create Web Service**
-5. Wait ~2 minutes → you get a free link like:
-   ```
-   https://encrypted-chat-xxxx.onrender.com
-   ```
-6. **Share that link with Ayaan** — that's it! You're both connected! 🚀
-
-> 💡 **Free tier note**: Render's free server sleeps after 15 minutes of no use.
-> When you first open it, it takes ~30 seconds to wake up. That's normal!
+The app uses the disk for the encrypted SQLite database and uploaded files. It automatically deletes chat data older than seven days. See `DEPLOYMENT.md` for the exact Render settings.
 
 ---
 
@@ -71,8 +63,11 @@ Set `MUHAMMED_PASSWORD` and `AYAAN_PASSWORD` as environment variables before sta
 | Feature | How |
 |---|---|
 | 💬 Send a message | Type in the box → press Enter |
+| 🖼️ Send an image/file | Tap the paperclip; photos are compressed automatically before upload |
+| 😀 Emoji / GIF | Use the smiley button, or paste a direct GIF link with the GIF button |
 | 📞 Voice call | Click the phone button in the top right |
 | 🔇 Mute yourself | Click the mic button during a call |
+| ⚙️ Settings | Change wallpaper, password, and keep-signed-in preference |
 | ⏻ Logout | Click the logout button (top right) |
 
 ---

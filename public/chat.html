@@ -19,6 +19,19 @@
     </div>
   </div>
 
+  <!-- ═══ SETTINGS ═════════════════════════════════════════════════════════════ -->
+  <div id="settingsModal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-card settings-card">
+      <div class="modal-header"><h3 id="settingsTitle">Settings</h3><button id="closeSettingsModal" class="modal-close" aria-label="Close">×</button></div>
+      <p class="modal-sub">Personalize this device and manage your account.</p>
+      <section class="settings-section"><h4>Chat wallpaper</h4><div class="wallpaper-options"><button class="wallpaper-choice active" data-wallpaper="aurora" aria-label="Aurora wallpaper"></button><button class="wallpaper-choice" data-wallpaper="midnight" aria-label="Midnight wallpaper"></button><button class="wallpaper-choice" data-wallpaper="sunset" aria-label="Sunset wallpaper"></button></div></section>
+      <label class="remember-login setting-toggle"><input type="checkbox" id="settingsRemember"><span>Keep me signed in on this device</span></label>
+      <p class="settings-hint">Messages and uploads are automatically cleared after 7 days to save space.</p>
+      <button id="openPasswordSettings" class="settings-action">Change password <span>›</span></button>
+      <button id="settingsLogout" class="settings-action danger">Log out from this device <span>›</span></button>
+    </div>
+  </div>
+
   <!-- ═══ CHANGE PASSWORD MODAL ════════════════════════════════════════════════ -->
   <div id="changePwdModal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pwdModalTitle">
     <div class="modal-card">
@@ -57,6 +70,10 @@
         </button>
       </form>
     </div>
+  </div>
+
+  <div id="gifModal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gifTitle">
+    <div class="modal-card gif-card"><div class="modal-header"><h3 id="gifTitle">Send a GIF</h3><button id="closeGifModal" class="modal-close" aria-label="Close">×</button></div><p class="modal-sub">Paste a direct GIF link, then send it securely in your chat.</p><input id="gifUrl" type="url" placeholder="https://example.com/fun.gif" inputmode="url"><div id="gifError" class="alert-msg error" style="display:none"></div><button id="sendGifBtn" class="btn-primary">Send GIF</button></div>
   </div>
 
   <!-- ═══ INCOMING CALL OVERLAY ════════════════════════════════════════════════ -->
@@ -194,6 +211,9 @@
         </label>
         <input type="file" id="fileInput" accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z,.mp3,.mp4,.mov,.webm" style="display:none" aria-hidden="true">
 
+        <button id="emojiBtn" class="attach-label emoji-btn" type="button" title="Emoji" aria-label="Choose emoji">☺</button>
+        <button id="gifBtn" class="attach-label gif-btn" type="button" title="GIF" aria-label="Send GIF">GIF</button>
+
         <!-- Message textarea -->
         <textarea
           id="msgInput"
@@ -207,6 +227,9 @@
         <button id="sendBtn" class="send-btn" aria-label="Send">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
+      </div>
+      <div id="emojiPicker" class="emoji-picker" style="display:none" aria-label="Emoji picker">
+        <button type="button">😀</button><button type="button">😂</button><button type="button">😍</button><button type="button">🥳</button><button type="button">😭</button><button type="button">👍</button><button type="button">❤️</button><button type="button">🔥</button><button type="button">✨</button><button type="button">🙏</button><button type="button">🎉</button><button type="button">😎</button>
       </div>
     </footer>
 

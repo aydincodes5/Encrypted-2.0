@@ -1,7 +1,16 @@
 /* ─── app.js — Login Page Logic ──────────────────────────────────────────── */
 
 function getSavedSession() {
-  return localStorage.getItem('ec_session') || sessionStorage.getItem('ec_session');
+  const saved = localStorage.getItem('ec_session') || sessionStorage.getItem('ec_session');
+  if (!saved) return null;
+  try {
+    const session = JSON.parse(saved);
+    return session && session.username && session.token ? saved : null;
+  } catch {
+    localStorage.removeItem('ec_session');
+    sessionStorage.removeItem('ec_session');
+    return null;
+  }
 }
 
 // A remembered session survives browser restarts; a normal session does not.

@@ -5,4 +5,4 @@ compatibility_date = "2026-09-11"
 [[d1_databases]]
 binding = "DB"
 database_name = "encryptedchat"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "057409b7-7e99-4528-a1f9-e33d5f1bed21"
